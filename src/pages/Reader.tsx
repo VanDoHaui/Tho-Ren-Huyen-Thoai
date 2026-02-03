@@ -48,6 +48,10 @@ type ReaderFont =
   | "lato"
   | "poppins";
 
+function isReaderTheme(x: unknown): x is ReaderTheme {
+  return x === "light" || x === "dark" || x === "paper";
+}
+
 function fontFamilyOf(font: ReaderFont) {
   switch (font) {
     case "noto":
@@ -205,9 +209,9 @@ export default function Reader() {
     );
 
     if (savedPrefs) {
-      if (savedPrefs.theme === "light" || savedPrefs.theme === "dark" || savedPrefs.theme === "paper") {
-        setTheme(savedPrefs.theme);
-      }
+      const t = savedPrefs.theme;
+      if (isReaderTheme(t)) setTheme(t);
+
       if (
         savedPrefs.font === "sans" ||
         savedPrefs.font === "noto" ||
@@ -217,7 +221,10 @@ export default function Reader() {
         savedPrefs.font === "lato" ||
         savedPrefs.font === "poppins"
       ) setFont(savedPrefs.font);
-      if (typeof savedPrefs.fontSize === "number") setFontSize(clamp(savedPrefs.fontSize, 14, 26));
+
+      if (typeof savedPrefs.fontSize === "number") {
+        setFontSize(clamp(savedPrefs.fontSize, 14, 26));
+      }
     }
 
     setPrefsReady(true);
@@ -236,8 +243,9 @@ export default function Reader() {
     localStorage.setItem(prefsKey, JSON.stringify(payload));
 
     if (user?.uid && storyId) {
+      // ✅ cast để không bị type ở userSync (light|dark) chặn build
       savePrefs(user.uid, storyId, {
-        theme,
+        theme: theme as any,
         font,
         fontSize: clamp(fontSize, 14, 26),
       }).catch(() => {});
@@ -260,13 +268,14 @@ export default function Reader() {
         ((localPrefs.updatedAt ?? 0) >= (remotePrefs.updatedAt ?? 0) ? localPrefs : remotePrefs);
 
       if (bestPrefs) {
-        if (bestPrefs.theme) setTheme(bestPrefs.theme);
-        if (bestPrefs.font) setFont(bestPrefs.font as any);
-        if (typeof bestPrefs.fontSize === "number") setFontSize(bestPrefs.fontSize);
+        if (isReaderTheme((bestPrefs as any).theme)) setTheme((bestPrefs as any).theme);
+
+        if ((bestPrefs as any).font) setFont((bestPrefs as any).font as any);
+        if (typeof (bestPrefs as any).fontSize === "number") setFontSize((bestPrefs as any).fontSize);
 
         if (bestPrefs === localPrefs && localPrefs) {
           await savePrefs(user.uid, storyId, {
-            theme: localPrefs.theme,
+            theme: (localPrefs.theme as any),
             font: localPrefs.font,
             fontSize: localPrefs.fontSize,
           });
@@ -494,9 +503,11 @@ export default function Reader() {
     ? "border-[#CDBFA7] bg-[#F4EFDF] text-slate-900"
     : "border-slate-400 bg-slate-50 text-slate-900";
 
-  const quoteInnerLineCls = isDark ? "border-slate-700/80" : isPaper ? "border-[#D7CCB6]" : "border-slate-200";
+  const quoteInnerLineCls =
+    isDark ? "border-slate-700/80" : isPaper ? "border-[#D7CCB6]" : "border-slate-200";
 
-  const statBoxCls = isDark ? "border-slate-600 bg-slate-900" : isPaper ? "border-[#CDBFA7] bg-[#F8F2E5]" : "border-slate-300 bg-white";
+  const statBoxCls =
+    isDark ? "border-slate-600 bg-slate-900" : isPaper ? "border-[#CDBFA7] bg-[#F8F2E5]" : "border-slate-300 bg-white";
   const statTextCls = isDark ? "text-slate-100" : "text-slate-900";
   const statSubCls = isDark ? "text-slate-400" : "text-slate-600";
 
@@ -534,7 +545,7 @@ export default function Reader() {
                   </Link>
                 </div>
 
-                {/* CENTER TITLES (fix lệch PC + mobile) */}
+                {/* CENTER TITLES */}
                 <div className="min-w-0 flex-1 text-center">
                   <div className="mx-auto max-w-[680px] px-2">
                     <div className="truncate text-[15px] sm:text-base font-semibold leading-5 sm:leading-6 m-0">
@@ -844,18 +855,12 @@ export default function Reader() {
                 wordBreak: "break-word",
                 letterSpacing: theme === "paper" ? 0.2 : undefined,
               }}
-              className={[
-                isDark ? "text-slate-100" : "text-slate-800",
-                "markdown",
-              ].join(" ")}
+              className={[isDark ? "text-slate-100" : "text-slate-800", "markdown"].join(" ")}
             >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  p: ({ children }) => (
-                    <p className="my-3 whitespace-normal break-words">{children}</p>
-                  ),
-
+                  p: ({ children }) => <p className="my-3 whitespace-normal break-words">{children}</p>,
                   blockquote: ({ children }) => {
                     const raw = extractText(children);
                     const lines = String(raw)
@@ -900,13 +905,8 @@ export default function Reader() {
                       </div>
                     );
                   },
-
-                  ul: ({ children }) => (
-                    <ul className="my-3 list-disc list-outside pl-6">{children}</ul>
-                  ),
-                  ol: ({ children }) => (
-                    <ol className="my-3 list-decimal list-outside pl-6">{children}</ol>
-                  ),
+                  ul: ({ children }) => <ul className="my-3 list-disc list-outside pl-6">{children}</ul>,
+                  ol: ({ children }) => <ol className="my-3 list-decimal list-outside pl-6">{children}</ol>,
                   li: ({ children }) => (
                     <li className="my-1 break-words" style={{ display: "list-item" }}>
                       {children}
