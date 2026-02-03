@@ -147,6 +147,8 @@ export default function Reader() {
   // ===== UI =====
   const [openSettings, setOpenSettings] = useState(false);
   const [openToc, setOpenToc] = useState(false);
+  const [openMenu, setOpenMenu] = useState(false);
+
   const [tocQuery, setTocQuery] = useState("");
   const tocInputRef = useRef<HTMLInputElement | null>(null);
   const currentChapRef = useRef<HTMLButtonElement | null>(null);
@@ -367,10 +369,11 @@ export default function Reader() {
         const y = el.scrollTop;
         const delta = y - lastY.current;
 
-        if (y < 60) setHideHeader(false);
+        // ✅ mượt hơn + ẩn cho cả mobile/pc
+        if (y < 30) setHideHeader(false);
         else {
-          if (delta > 12) setHideHeader(true);
-          if (delta < -12) setHideHeader(false);
+          if (delta > 8) setHideHeader(true);
+          if (delta < -8) setHideHeader(false);
         }
 
         lastY.current = y;
@@ -383,8 +386,8 @@ export default function Reader() {
   }, [storyId, chapterId]);
 
   useEffect(() => {
-    if (openSettings || openToc) setHideHeader(false);
-  }, [openSettings, openToc]);
+    if (openSettings || openToc || openMenu) setHideHeader(false);
+  }, [openSettings, openToc, openMenu]);
 
   useEffect(() => {
     if (!openToc) return;
@@ -422,6 +425,7 @@ export default function Reader() {
 
   const goToChapter = (cid: string) => {
     setOpenToc(false);
+    setOpenMenu(false);
     navigate(`/read/${storyId}/${String(cid).trim()}`);
     requestAnimationFrame(() => scrollRef.current?.scrollTo({ top: 0 }));
   };
@@ -506,26 +510,30 @@ export default function Reader() {
         >
           <div className="px-3 sm:px-10 py-3 sm:py-4">
             <div className="mx-auto max-w-6xl">
-              <div className="grid grid-cols-[1fr_auto_1fr] items-center">
-                <div className="justify-self-start">
-                  <Link to="/" className={`rounded-xl border px-3 sm:px-5 py-2 text-sm font-medium ${btnBase}`}>
-                    <span className="sm:hidden">Home</span>
-                    <span className="hidden sm:inline">Trang chủ</span>
+              {/* TOP BAR */}
+              <div className="flex items-center justify-between gap-2">
+                {/* LEFT (PC only) */}
+                <div className="hidden sm:flex items-center gap-2">
+                  <Link to="/" className={`rounded-xl border px-4 py-2 text-sm font-medium ${btnBase}`}>
+                    Trang chủ
                   </Link>
                 </div>
 
-                <div className="justify-self-center w-fit text-center">
-                  <div className="truncate max-w-[52vw] text-[15px] sm:text-base font-semibold tracking-wide leading-6">
+                {/* TITLE */}
+                <div className="min-w-0 flex-1 text-center">
+                  <div className="truncate mx-auto max-w-[70vw] text-[15px] sm:text-base font-semibold tracking-wide leading-6">
                     {story.title}
                   </div>
                 </div>
 
-                <div className="justify-self-end">
-                  <div className="relative flex items-center gap-2 flex-wrap">
+                {/* RIGHT */}
+                <div className="flex items-center gap-2">
+                  {/* PC ACTIONS */}
+                  <div className="hidden sm:flex items-center gap-2">
                     {!authLoading && !user && (
                       <button
                         onClick={login}
-                        className={`rounded-xl border px-3 sm:px-5 py-2 text-sm font-medium ${btnBase}`}
+                        className={`rounded-xl border px-4 py-2 text-sm font-medium ${btnBase}`}
                         title="Đăng nhập để đồng bộ giữa thiết bị"
                       >
                         Đăng nhập
@@ -534,7 +542,7 @@ export default function Reader() {
                     {!authLoading && user && (
                       <button
                         onClick={logout}
-                        className={`rounded-xl border px-3 sm:px-5 py-2 text-sm font-medium ${btnBase}`}
+                        className={`rounded-xl border px-4 py-2 text-sm font-medium ${btnBase}`}
                         title={user.email ?? "Đã đăng nhập"}
                       >
                         Đăng xuất
@@ -545,8 +553,9 @@ export default function Reader() {
                       onClick={() => {
                         setOpenSettings((v) => !v);
                         setOpenToc(false);
+                        setOpenMenu(false);
                       }}
-                      className={`rounded-xl border px-3 sm:px-5 py-2 text-sm font-medium ${btnBase}`}
+                      className={`rounded-xl border px-4 py-2 text-sm font-medium ${btnBase}`}
                     >
                       Cài đặt
                     </button>
@@ -555,157 +564,245 @@ export default function Reader() {
                       onClick={() => {
                         setOpenToc((v) => !v);
                         setOpenSettings(false);
+                        setOpenMenu(false);
                       }}
-                      className={`rounded-xl border px-3 sm:px-5 py-2 text-sm font-medium ${btnBase}`}
+                      className={`rounded-xl border px-4 py-2 text-sm font-medium ${btnBase}`}
                     >
                       Mục lục
                     </button>
-
-                    {(openSettings || openToc) && (
-                      <button
-                        aria-label="Close overlay"
-                        className="fixed inset-0 z-40 cursor-default"
-                        onClick={() => {
-                          setOpenSettings(false);
-                          setOpenToc(false);
-                        }}
-                      />
-                    )}
-
-                    {/* SETTINGS PANEL */}
-                    {openSettings && (
-                      <div
-                        className={`fixed left-3 right-3 top-[72px] z-50 max-h-[80vh] overflow-auto rounded-3xl border p-4 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[320px] ${panelBg}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className={`text-sm font-bold ${textMain}`}>Cài đặt đọc</div>
-
-                        <div className="mt-4">
-                          <div className={`text-xs font-semibold ${textSub}`}>Giao diện</div>
-                          <div className="mt-2 flex gap-2">
-                            {(["light", "dark"] as ReaderTheme[]).map((t) => {
-                              const active = theme === t;
-                              return (
-                                <button
-                                  key={t}
-                                  onClick={() => setTheme(t)}
-                                  className={[
-                                    "flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold transition",
-                                    active ? "border-emerald-400 bg-emerald-500 text-white" : btnBase,
-                                  ].join(" ")}
-                                >
-                                  {t === "light" ? "Light" : "Dark"}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="mt-4">
-                          <div className={`text-xs font-semibold ${textSub}`}>Font chữ</div>
-                          <div className="mt-2 grid grid-cols-3 gap-2">
-                            {fontOptions.map(({ value, label }) => {
-                              const active = font === value;
-                              return (
-                                <button
-                                  key={value}
-                                  onClick={() => setFont(value)}
-                                  className={[
-                                    "rounded-2xl border px-2 py-2 text-xs font-semibold transition",
-                                    active ? "border-emerald-400 bg-emerald-500 text-white" : btnBase,
-                                  ].join(" ")}
-                                  style={{ fontFamily: fontFamilyOf(value) }}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        <div className="mt-4">
-                          <div className={`text-xs font-semibold ${textSub}`}>Cỡ chữ</div>
-                          <div className="mt-2 flex items-center gap-2">
-                            <button
-                              onClick={() => setFontSize((s) => clamp(s - 1, 14, 26))}
-                              className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
-                            >
-                              A-
-                            </button>
-                            <div className={`w-12 text-center text-sm font-semibold ${textMain}`}>
-                              {fontSize}
-                            </div>
-                            <button
-                              onClick={() => setFontSize((s) => clamp(s + 1, 14, 26))}
-                              className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
-                            >
-                              A+
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* TOC PANEL */}
-                    {openToc && (
-                      <div
-                        className={`fixed left-3 right-3 top-[72px] z-50 max-h-[80vh] overflow-auto rounded-3xl border p-4 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[340px] ${panelBg}`}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <div className="flex items-center justify-between">
-                          <div className={`text-sm font-bold ${textMain}`}>Mục lục</div>
-                          <button
-                            onClick={() => setOpenToc(false)}
-                            className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
-                            aria-label="Close toc"
-                          >
-                            ✕
-                          </button>
-                        </div>
-
-                        <div className="mt-3">
-                          <input
-                            ref={tocInputRef}
-                            value={tocQuery}
-                            onChange={(e) => setTocQuery(e.target.value)}
-                            placeholder="Tìm chapter…"
-                            className={`w-full rounded-2xl border px-4 py-3 outline-none ${inputBg}`}
-                          />
-                        </div>
-
-                        <div className="mt-3 max-h-[52vh] overflow-auto space-y-2 pr-1">
-                          {filteredChapters.map((c) => {
-                            const active = String(c.id) === String(chapterId);
-                            return (
-                              <button
-                                key={c.id}
-                                ref={active ? currentChapRef : undefined}
-                                onClick={() => goToChapter(String(c.id))}
-                                className={[
-                                  "w-full rounded-2xl px-4 py-3 text-left border transition",
-                                  active
-                                    ? "bg-emerald-500 border-emerald-300 text-white"
-                                    : isDark
-                                    ? "bg-slate-950 border-slate-700 hover:bg-slate-800 text-slate-100"
-                                    : "bg-white border-slate-200 hover:bg-slate-50 text-slate-900",
-                                ].join(" ")}
-                              >
-                                <div className="font-bold text-sm">Chương {c.id}</div>
-                                <div className={active ? "text-sm text-white/90" : `text-sm ${textSub}`}>
-                                  {c.title || `Chapter ${c.id}`}
-                                </div>
-                              </button>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
                   </div>
+
+                  {/* MOBILE MENU BUTTON */}
+                  <button
+                    onClick={() => {
+                      setOpenMenu((v) => !v);
+                      setOpenSettings(false);
+                      setOpenToc(false);
+                    }}
+                    className={`sm:hidden rounded-xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                    aria-label="Open menu"
+                  >
+                    ☰
+                  </button>
                 </div>
+
+                {/* BACKDROP */}
+                {(openMenu || openSettings || openToc) && (
+                  <button
+                    aria-label="Close overlay"
+                    className="fixed inset-0 z-40 cursor-default"
+                    onClick={() => {
+                      setOpenMenu(false);
+                      setOpenSettings(false);
+                      setOpenToc(false);
+                    }}
+                  />
+                )}
+
+                {/* MOBILE MENU PANEL */}
+                {openMenu && (
+                  <div
+                    className={`fixed left-3 right-3 top-[72px] z-50 rounded-3xl border p-3 shadow-xl ${panelBg}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className={`text-sm font-bold ${textMain}`}>Menu</div>
+                      <button
+                        onClick={() => setOpenMenu(false)}
+                        className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                        aria-label="Close menu"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="mt-3 grid grid-cols-2 gap-2">
+                      <Link
+                        to="/"
+                        className={`text-center rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                        onClick={() => setOpenMenu(false)}
+                      >
+                        Home
+                      </Link>
+
+                      <button
+                        onClick={() => {
+                          setOpenMenu(false);
+                          setOpenToc(true);
+                        }}
+                        className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                      >
+                        Mục lục
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          setOpenMenu(false);
+                          setOpenSettings(true);
+                        }}
+                        className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                      >
+                        Cài đặt
+                      </button>
+
+                      {!authLoading && !user ? (
+                        <button
+                          onClick={() => {
+                            setOpenMenu(false);
+                            login();
+                          }}
+                          className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                        >
+                          Đăng nhập
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => {
+                            setOpenMenu(false);
+                            logout();
+                          }}
+                          className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                        >
+                          Đăng xuất
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* SETTINGS PANEL */}
+                {openSettings && (
+                  <div
+                    className={`fixed left-3 right-3 top-[72px] z-50 max-h-[80vh] overflow-auto rounded-3xl border p-4 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[320px] ${panelBg}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className={`text-sm font-bold ${textMain}`}>Cài đặt đọc</div>
+
+                    <div className="mt-4">
+                      <div className={`text-xs font-semibold ${textSub}`}>Giao diện</div>
+                      <div className="mt-2 flex gap-2">
+                        {(["light", "dark"] as ReaderTheme[]).map((t) => {
+                          const active = theme === t;
+                          return (
+                            <button
+                              key={t}
+                              onClick={() => setTheme(t)}
+                              className={[
+                                "flex-1 rounded-2xl border px-3 py-2 text-sm font-semibold transition",
+                                active ? "border-emerald-400 bg-emerald-500 text-white" : btnBase,
+                              ].join(" ")}
+                            >
+                              {t === "light" ? "Light" : "Dark"}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className={`text-xs font-semibold ${textSub}`}>Font chữ</div>
+                      <div className="mt-2 grid grid-cols-3 gap-2">
+                        {fontOptions.map(({ value, label }) => {
+                          const active = font === value;
+                          return (
+                            <button
+                              key={value}
+                              onClick={() => setFont(value)}
+                              className={[
+                                "rounded-2xl border px-2 py-2 text-xs font-semibold transition",
+                                active ? "border-emerald-400 bg-emerald-500 text-white" : btnBase,
+                              ].join(" ")}
+                              style={{ fontFamily: fontFamilyOf(value) }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-4">
+                      <div className={`text-xs font-semibold ${textSub}`}>Cỡ chữ</div>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => setFontSize((s) => clamp(s - 1, 14, 26))}
+                          className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                        >
+                          A-
+                        </button>
+                        <div className={`w-12 text-center text-sm font-semibold ${textMain}`}>
+                          {fontSize}
+                        </div>
+                        <button
+                          onClick={() => setFontSize((s) => clamp(s + 1, 14, 26))}
+                          className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                        >
+                          A+
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* TOC PANEL */}
+                {openToc && (
+                  <div
+                    className={`fixed left-3 right-3 top-[72px] z-50 max-h-[80vh] overflow-auto rounded-3xl border p-4 shadow-xl sm:absolute sm:left-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[340px] ${panelBg}`}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className={`text-sm font-bold ${textMain}`}>Mục lục</div>
+                      <button
+                        onClick={() => setOpenToc(false)}
+                        className={`rounded-2xl border px-3 py-2 text-sm font-semibold ${btnBase}`}
+                        aria-label="Close toc"
+                      >
+                        ✕
+                      </button>
+                    </div>
+
+                    <div className="mt-3">
+                      <input
+                        ref={tocInputRef}
+                        value={tocQuery}
+                        onChange={(e) => setTocQuery(e.target.value)}
+                        placeholder="Tìm chapter…"
+                        className={`w-full rounded-2xl border px-4 py-3 outline-none ${inputBg}`}
+                      />
+                    </div>
+
+                    <div className="mt-3 max-h-[52vh] overflow-auto space-y-2 pr-1">
+                      {filteredChapters.map((c) => {
+                        const active = String(c.id) === String(chapterId);
+                        return (
+                          <button
+                            key={c.id}
+                            ref={active ? currentChapRef : undefined}
+                            onClick={() => goToChapter(String(c.id))}
+                            className={[
+                              "w-full rounded-2xl px-4 py-3 text-left border transition",
+                              active
+                                ? "bg-emerald-500 border-emerald-300 text-white"
+                                : isDark
+                                ? "bg-slate-950 border-slate-700 hover:bg-slate-800 text-slate-100"
+                                : "bg-white border-slate-200 hover:bg-slate-50 text-slate-900",
+                            ].join(" ")}
+                          >
+                            <div className="font-bold text-sm">Chương {c.id}</div>
+                            <div className={active ? "text-sm text-white/90" : `text-sm ${textSub}`}>
+                              {c.title || `Chapter ${c.id}`}
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
 
+              {/* CHAPTER TITLE */}
               <div className="mt-2 text-center">
-                <div className="truncate mx-auto max-w-[52vw] text-base font-medium leading-6">
+                <div className="truncate mx-auto max-w-[80vw] text-base font-medium leading-6">
                   {chapter?.title ?? `Chapter ${chapterId}`}
                 </div>
               </div>
@@ -733,7 +830,7 @@ export default function Reader() {
               }}
               className={[
                 isDark ? "text-slate-100" : "text-slate-800",
-                "markdown", // <- để bạn dễ target CSS nếu cần
+                "markdown",
               ].join(" ")}
             >
               <ReactMarkdown
@@ -795,10 +892,7 @@ export default function Reader() {
                     <ol className="my-3 list-decimal list-outside pl-6">{children}</ol>
                   ),
                   li: ({ children }) => (
-                    <li
-                      className="my-1 break-words"
-                      style={{ display: "list-item" }} // <- FIX bullet bị tách do CSS global
-                    >
+                    <li className="my-1 break-words" style={{ display: "list-item" }}>
                       {children}
                     </li>
                   ),
