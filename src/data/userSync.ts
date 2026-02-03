@@ -2,12 +2,14 @@ import { doc, getDoc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../firebase";
 
 export type ReaderProgress = { lastChapterId: string; updatedAt: number };
+export type ReaderTheme = "light" | "dark" | "paper";
 export type ReaderPrefs = {
-  theme: "light" | "dark";
+  theme: ReaderTheme;
   font: string;
   fontSize: number;
-  updatedAt: number;
+  updatedAt?: number;
 };
+
 
 function progressRef(uid: string, storyId: string) {
   return doc(db, "users", uid, "progress", storyId);

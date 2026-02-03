@@ -10,9 +10,6 @@ const firebaseConfig = {
   messagingSenderId: "154252716046",
   appId: "1:154252716046:web:82e6ff29a85d1ae31d345f",
 };
-console.log("[FB] projectId:", firebaseConfig.projectId);
-console.log("[FB] authDomain:", firebaseConfig.authDomain);
-console.log("[FB] apiKey:", firebaseConfig.apiKey);
 
 
 export const app = initializeApp(firebaseConfig);
