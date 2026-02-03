@@ -38,7 +38,7 @@ function normalizeContent(raw?: string) {
     .trim();
 }
 
-type ReaderTheme = "light" | "dark";
+type ReaderTheme = "light" | "paper" | "dark";
 type ReaderFont =
   | "sans"
   | "noto"
@@ -205,7 +205,9 @@ export default function Reader() {
     );
 
     if (savedPrefs) {
-      if (savedPrefs.theme === "light" || savedPrefs.theme === "dark") setTheme(savedPrefs.theme);
+      if (savedPrefs.theme === "light" || savedPrefs.theme === "dark" || savedPrefs.theme === "paper") {
+        setTheme(savedPrefs.theme);
+      }
       if (
         savedPrefs.font === "sans" ||
         savedPrefs.font === "noto" ||
@@ -330,7 +332,8 @@ export default function Reader() {
 
   // ===== FULLSCREEN BACKGROUND =====
   const isDark = theme === "dark";
-  const bg = isDark ? "#020617" : "#ffffff";
+  const isPaper = theme === "paper";
+  const bg = isDark ? "#020617" : isPaper ? "#E8E0CF" : "#ffffff";
 
   useEffect(() => {
     const prevBodyBg = document.body.style.backgroundColor;
@@ -369,7 +372,6 @@ export default function Reader() {
         const y = el.scrollTop;
         const delta = y - lastY.current;
 
-        // ✅ mượt hơn + ẩn cho cả mobile/pc
         if (y < 30) setHideHeader(false);
         else {
           if (delta > 8) setHideHeader(true);
@@ -465,22 +467,36 @@ export default function Reader() {
   }
 
   const textMain = isDark ? "text-slate-100" : "text-slate-900";
-  const textSub = isDark ? "text-slate-400" : "text-slate-600";
-  const headerBg = isDark ? "bg-slate-950" : "bg-white";
-  const panelBg = isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-200";
+  const textSub = isDark ? "text-slate-400" : isPaper ? "text-slate-700" : "text-slate-600";
+  const headerBg = isDark ? "bg-slate-950" : isPaper ? "bg-[#E8E0CF]" : "bg-white";
+
+  const panelBg = isDark
+    ? "bg-slate-900 border-slate-700"
+    : isPaper
+    ? "bg-[#F4EFDF] border-[#D7CCB6]"
+    : "bg-white border-slate-200";
+
   const inputBg = isDark
     ? "bg-slate-950 border-slate-700 text-slate-100 placeholder:text-slate-500 focus:border-slate-600"
+    : isPaper
+    ? "bg-[#F4EFDF] border-[#D7CCB6] text-slate-900 placeholder:text-slate-500 focus:border-[#C7BA9F]"
     : "bg-white border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-slate-300";
+
   const btnBase = isDark
     ? "border-slate-700 bg-slate-950 hover:bg-slate-900 text-slate-100"
+    : isPaper
+    ? "border-[#D7CCB6] bg-[#F4EFDF] hover:bg-[#EEE5D2] text-slate-900"
     : "border-slate-200 bg-white hover:bg-slate-50 text-slate-900";
 
   const quoteOuterCls = isDark
     ? "border-slate-500 bg-slate-950/80 text-slate-100"
+    : isPaper
+    ? "border-[#CDBFA7] bg-[#F4EFDF] text-slate-900"
     : "border-slate-400 bg-slate-50 text-slate-900";
-  const quoteInnerLineCls = isDark ? "border-slate-700/80" : "border-slate-200";
 
-  const statBoxCls = isDark ? "border-slate-600 bg-slate-900" : "border-slate-300 bg-white";
+  const quoteInnerLineCls = isDark ? "border-slate-700/80" : isPaper ? "border-[#D7CCB6]" : "border-slate-200";
+
+  const statBoxCls = isDark ? "border-slate-600 bg-slate-900" : isPaper ? "border-[#CDBFA7] bg-[#F8F2E5]" : "border-slate-300 bg-white";
   const statTextCls = isDark ? "text-slate-100" : "text-slate-900";
   const statSubCls = isDark ? "text-slate-400" : "text-slate-600";
 
@@ -505,24 +521,28 @@ export default function Reader() {
             headerBg,
             textMain,
             "border-b",
-            isDark ? "border-slate-800" : "border-slate-200",
+            isDark ? "border-slate-800" : isPaper ? "border-[#D7CCB6]" : "border-slate-200",
           ].join(" ")}
         >
           <div className="px-3 sm:px-10 py-3 sm:py-4">
             <div className="mx-auto max-w-6xl">
-              {/* TOP BAR */}
               <div className="flex items-center justify-between gap-2">
-                {/* LEFT (PC only) */}
+                {/* LEFT (PC) */}
                 <div className="hidden sm:flex items-center gap-2">
                   <Link to="/" className={`rounded-xl border px-4 py-2 text-sm font-medium ${btnBase}`}>
                     Trang chủ
                   </Link>
                 </div>
 
-                {/* TITLE */}
+                {/* CENTER TITLES (fix lệch PC + mobile) */}
                 <div className="min-w-0 flex-1 text-center">
-                  <div className="truncate mx-auto max-w-[70vw] text-[15px] sm:text-base font-semibold tracking-wide leading-6">
-                    {story.title}
+                  <div className="mx-auto max-w-[680px] px-2">
+                    <div className="truncate text-[15px] sm:text-base font-semibold leading-5 sm:leading-6 m-0">
+                      {story.title}
+                    </div>
+                    <div className="truncate text-[13px] sm:text-sm font-medium leading-5 m-0 mt-1">
+                      {chapter?.title ?? `Chapter ${chapterId}`}
+                    </div>
                   </div>
                 </div>
 
@@ -572,7 +592,7 @@ export default function Reader() {
                     </button>
                   </div>
 
-                  {/* MOBILE MENU BUTTON */}
+                  {/* MOBILE MENU */}
                   <button
                     onClick={() => {
                       setOpenMenu((v) => !v);
@@ -681,7 +701,7 @@ export default function Reader() {
                     <div className="mt-4">
                       <div className={`text-xs font-semibold ${textSub}`}>Giao diện</div>
                       <div className="mt-2 flex gap-2">
-                        {(["light", "dark"] as ReaderTheme[]).map((t) => {
+                        {(["light", "paper", "dark"] as ReaderTheme[]).map((t) => {
                           const active = theme === t;
                           return (
                             <button
@@ -692,7 +712,7 @@ export default function Reader() {
                                 active ? "border-emerald-400 bg-emerald-500 text-white" : btnBase,
                               ].join(" ")}
                             >
-                              {t === "light" ? "Light" : "Dark"}
+                              {t === "light" ? "Light" : t === "paper" ? "Paper" : "Dark"}
                             </button>
                           );
                         })}
@@ -785,6 +805,8 @@ export default function Reader() {
                                 ? "bg-emerald-500 border-emerald-300 text-white"
                                 : isDark
                                 ? "bg-slate-950 border-slate-700 hover:bg-slate-800 text-slate-100"
+                                : isPaper
+                                ? "bg-[#F4EFDF] border-[#D7CCB6] hover:bg-[#EEE5D2] text-slate-900"
                                 : "bg-white border-slate-200 hover:bg-slate-50 text-slate-900",
                             ].join(" ")}
                           >
@@ -798,13 +820,6 @@ export default function Reader() {
                     </div>
                   </div>
                 )}
-              </div>
-
-              {/* CHAPTER TITLE */}
-              <div className="mt-2 text-center">
-                <div className="truncate mx-auto max-w-[80vw] text-base font-medium leading-6">
-                  {chapter?.title ?? `Chapter ${chapterId}`}
-                </div>
               </div>
             </div>
           </div>
@@ -827,6 +842,7 @@ export default function Reader() {
                 fontWeight: 400,
                 overflowWrap: "anywhere",
                 wordBreak: "break-word",
+                letterSpacing: theme === "paper" ? 0.2 : undefined,
               }}
               className={[
                 isDark ? "text-slate-100" : "text-slate-800",
