@@ -521,7 +521,7 @@ export default function Reader() {
                 </div>
 
                 <div className="justify-self-end">
-                  <div className="relative flex items-center gap-2">
+                  <div className="relative flex items-center gap-2 flex-wrap">
                     {!authLoading && !user && (
                       <button
                         onClick={login}
@@ -728,13 +728,20 @@ export default function Reader() {
                 lineHeight: 1.9,
                 fontFamily: fontFamilyOf(font),
                 fontWeight: 400,
+                overflowWrap: "anywhere",
+                wordBreak: "break-word",
               }}
-              className={isDark ? "text-slate-100" : "text-slate-800"}
+              className={[
+                isDark ? "text-slate-100" : "text-slate-800",
+                "markdown", // <- để bạn dễ target CSS nếu cần
+              ].join(" ")}
             >
               <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  p: ({ children }) => <p className="my-3 whitespace-pre-wrap">{children}</p>,
+                  p: ({ children }) => (
+                    <p className="my-3 whitespace-normal break-words">{children}</p>
+                  ),
 
                   blockquote: ({ children }) => {
                     const raw = extractText(children);
@@ -781,9 +788,20 @@ export default function Reader() {
                     );
                   },
 
-                  ul: ({ children }) => <ul className="my-3 list-disc pl-6">{children}</ul>,
-                  ol: ({ children }) => <ol className="my-3 list-decimal pl-6">{children}</ol>,
-                  li: ({ children }) => <li className="my-1">{children}</li>,
+                  ul: ({ children }) => (
+                    <ul className="my-3 list-disc list-outside pl-6">{children}</ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="my-3 list-decimal list-outside pl-6">{children}</ol>
+                  ),
+                  li: ({ children }) => (
+                    <li
+                      className="my-1 break-words"
+                      style={{ display: "list-item" }} // <- FIX bullet bị tách do CSS global
+                    >
+                      {children}
+                    </li>
+                  ),
                 }}
               >
                 {content || ""}

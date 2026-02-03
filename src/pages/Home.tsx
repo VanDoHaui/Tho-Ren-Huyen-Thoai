@@ -40,13 +40,13 @@ export default function Home() {
         if (!mounted) return;
         setStory(s ?? null);
       } finally {
-        if (mounted) setDbLoading(false); // ✅ tránh kẹt loading
+        if (mounted) setDbLoading(false);
       }
     })();
 
     const unsub = listenChapters(storyId, (chs) => {
       if (!mounted) return;
-      setChapters(chs);
+      setChapters(chs ?? []);
     });
 
     return () => {
@@ -93,7 +93,7 @@ export default function Home() {
   const [descExpanded, setDescExpanded] = useState(false);
   const descRef = useRef<HTMLDivElement | null>(null);
   const [descHeight, setDescHeight] = useState(0);
-  const COLLAPSED_HEIGHT = 72;
+  const COLLAPSED_HEIGHT = 84;
 
   useEffect(() => {
     if (!descRef.current) return;
@@ -108,30 +108,24 @@ export default function Home() {
 
   const canToggleDesc = descHeight > COLLAPSED_HEIGHT + 8;
 
-  // ---------- Split chapters: left (odd) | right (even) ----------
-  const leftCol = useMemo(
-    () => pageItems.filter((c) => Number(c.id) % 2 === 1),
-    [pageItems]
-  );
-  const rightCol = useMemo(
-    () => pageItems.filter((c) => Number(c.id) % 2 === 0),
-    [pageItems]
-  );
-
   // ---------- Continue reading ----------
   const continueTo = useMemo(() => {
     const progressKey = `sr:reader:progress:${storyId}`;
     const saved = safeParse<ReaderProgress>(localStorage.getItem(progressKey));
     const savedId = saved?.lastChapterId ? String(saved.lastChapterId) : null;
 
-    const fallback = sortedChapters?.[0]?.id
-      ? String(sortedChapters[0].id)
-      : "1";
-
+    const fallback = sortedChapters?.[0]?.id ? String(sortedChapters[0].id) : "1";
     if (!savedId) return fallback;
+
     const exists = sortedChapters.some((c) => String(c.id) === savedId);
     return exists ? savedId : fallback;
   }, [storyId, sortedChapters]);
+
+  // ---------- Split columns for desktop (keep order) ----------
+  const [leftCol, rightCol] = useMemo(() => {
+    const half = Math.ceil(pageItems.length / 2);
+    return [pageItems.slice(0, half), pageItems.slice(half)];
+  }, [pageItems]);
 
   if (dbLoading) {
     return (
@@ -152,7 +146,7 @@ export default function Home() {
 
   return (
     <div className="bg-white">
-      <div className="mx-auto max-w-5xl px-4 py-8 space-y-10">
+      <div className="mx-auto max-w-5xl px-4 py-6 sm:py-8 space-y-8 sm:space-y-10">
         {/* HERO */}
         <div className="flex flex-col gap-6 md:flex-row">
           {/* Cover */}
@@ -161,7 +155,7 @@ export default function Home() {
               <img
                 src="/covers/overgeared.jpg"
                 alt={story.title}
-                className="h-[340px] w-full object-cover"
+                className="h-[320px] sm:h-[340px] w-full object-cover"
               />
             </div>
           </div>
@@ -169,9 +163,11 @@ export default function Home() {
           {/* Info */}
           <div className="flex-1">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <h1 className="text-3xl font-bold text-slate-900">{story.title}</h1>
+              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
+                {story.title}
+              </h1>
 
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
                 {/* ADMIN luôn hiện */}
                 <Link
                   to="/admin"
@@ -237,7 +233,7 @@ export default function Home() {
                   </div>
 
                   {!descExpanded && canToggleDesc && (
-                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-8 bg-gradient-to-t from-white to-transparent" />
+                    <div className="pointer-events-none absolute inset-x-0 bottom-0 h-10 bg-gradient-to-t from-white to-transparent" />
                   )}
                 </div>
 
@@ -252,17 +248,17 @@ export default function Home() {
               </div>
             )}
 
-            <div className="mt-5 flex flex-wrap gap-3">
+            <div className="mt-5 grid grid-cols-1 sm:flex sm:flex-wrap gap-3">
               <Link
                 to={`/read/${storyId}/${sortedChapters?.[0]?.id ?? "1"}`}
-                className="inline-flex rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-500"
+                className="inline-flex justify-center rounded-xl bg-blue-600 px-5 py-3 text-sm font-bold text-white hover:bg-blue-500"
               >
                 BẮT ĐẦU ĐỌC
               </Link>
 
               <Link
                 to={`/read/${storyId}/${continueTo}`}
-                className="inline-flex rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-900 hover:bg-slate-50"
+                className="inline-flex justify-center rounded-xl border border-slate-200 bg-white px-5 py-3 text-sm font-bold text-slate-900 hover:bg-slate-50"
                 title={`Tiếp tục chương ${continueTo}`}
               >
                 TIẾP TỤC ĐỌC (Chương {continueTo})
@@ -320,9 +316,10 @@ export default function Home() {
               Chưa có chương. Vào Admin để import.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 md:divide-x">
-              <div className="divide-y">
-                {leftCol.map((c) => (
+            <>
+              {/* Mobile: 1 cột, đúng thứ tự */}
+              <div className="divide-y md:hidden">
+                {pageItems.map((c) => (
                   <Link
                     key={c.id}
                     to={`/read/${storyId}/${c.id}`}
@@ -333,18 +330,33 @@ export default function Home() {
                 ))}
               </div>
 
-              <div className="divide-y">
-                {rightCol.map((c) => (
-                  <Link
-                    key={c.id}
-                    to={`/read/${storyId}/${c.id}`}
-                    className="block px-4 py-3 hover:bg-slate-50 text-sm font-medium"
-                  >
-                    {c.title?.trim() ? c.title : `Chương ${c.id}`}
-                  </Link>
-                ))}
+              {/* Desktop: 2 cột, vẫn giữ thứ tự bằng cách chia nửa */}
+              <div className="hidden md:grid grid-cols-2 divide-x">
+                <div className="divide-y">
+                  {leftCol.map((c) => (
+                    <Link
+                      key={c.id}
+                      to={`/read/${storyId}/${c.id}`}
+                      className="block px-4 py-3 hover:bg-slate-50 text-sm font-medium"
+                    >
+                      {c.title?.trim() ? c.title : `Chương ${c.id}`}
+                    </Link>
+                  ))}
+                </div>
+
+                <div className="divide-y">
+                  {rightCol.map((c) => (
+                    <Link
+                      key={c.id}
+                      to={`/read/${storyId}/${c.id}`}
+                      className="block px-4 py-3 hover:bg-slate-50 text-sm font-medium"
+                    >
+                      {c.title?.trim() ? c.title : `Chương ${c.id}`}
+                    </Link>
+                  ))}
+                </div>
               </div>
-            </div>
+            </>
           )}
         </div>
       </div>
