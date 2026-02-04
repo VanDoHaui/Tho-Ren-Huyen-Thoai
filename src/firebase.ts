@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
 
 // Vite exposes env via `import.meta.env`.
 // Keep a single source of truth: .env (and DO NOT commit it).
@@ -37,16 +37,8 @@ export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
 
-// Enable offline persistence (cache local)
-enableIndexedDbPersistence(db).catch((err) => {
-  if (err.code === 'failed-precondition') {
-    console.warn('[fb] Persistence failed: Multiple tabs open');
-  } else if (err.code === 'unimplemented') {
-    console.warn('[fb] Persistence not available in this browser');
-  } else {
-    console.warn('[fb] Persistence error:', err);
-  }
-});
+// ❌ TẮT persistence để tránh multi-tab conflict
+// Không cần cache vì Firestore đã có memory cache mặc định
 
 console.log("[fb] projectId =", import.meta.env.VITE_FB_PROJECT_ID);
 console.log("[fb] authDomain =", import.meta.env.VITE_FB_AUTH_DOMAIN);
