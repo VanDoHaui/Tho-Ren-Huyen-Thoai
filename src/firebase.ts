@@ -36,3 +36,5 @@ assertEnv("VITE_FB_APP_ID", firebaseConfig.appId);
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+console.log("[fb] projectId =", import.meta.env.VITE_FB_PROJECT_ID);
+console.log("[fb] authDomain =", import.meta.env.VITE_FB_AUTH_DOMAIN);
