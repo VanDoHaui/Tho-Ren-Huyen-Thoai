@@ -24,6 +24,14 @@ export type Chapter = {
   updatedAt: number;
 };
 
+/** Lightweight chapter info for lists/TOC (no content). */
+export type ChapterMeta = {
+  id: string;
+  num: number;
+  title: string;
+  updatedAt: number;
+};
+
 export type Story = {
   id: string;
   title: string;
@@ -44,8 +52,16 @@ function chaptersCol(storyId: string) {
   return collection(db, "stories", storyId, "chapters");
 }
 
+function chaptersMetaCol(storyId: string) {
+  return collection(db, "stories", storyId, "chaptersMeta");
+}
+
 function chapterRef(storyId: string, chapterId: string) {
   return doc(db, "stories", storyId, "chapters", chapterId);
+}
+
+function chapterMetaRef(storyId: string, chapterId: string) {
+  return doc(db, "stories", storyId, "chaptersMeta", chapterId);
 }
 
 // =======================
@@ -83,10 +99,46 @@ export async function upsertStory(story: Story) {
 // Chapters
 // =======================
 
+/**
+ * ✅ Chapters list for UI (Home/TOC) – does NOT download content.
+ *
+ * Uses: stories/{storyId}/chaptersMeta/{chapterId}
+ * Backward-compat: if meta is empty, falls back to old `chapters` (will be heavy until migrated).
+ */
+export async function getChapterMetas(storyId: string): Promise<ChapterMeta[]> {
+  const metaQ = query(chaptersMetaCol(storyId), orderBy("num", "asc"));
+  const metaSnap = await getDocs(metaQ);
+
+  if (!metaSnap.empty) {
+    return metaSnap.docs.map((d) => {
+      const data = d.data() as any;
+      return {
+        id: d.id,
+        num: Number(data.num ?? Number(d.id) ?? 0),
+        title: data.title ?? "",
+        updatedAt: data.updatedAt ?? 0,
+      };
+    });
+  }
+
+  // ⚠️ fallback (legacy schema)
+  const legacyQ = query(chaptersCol(storyId), orderBy("num", "asc"));
+  const legacySnap = await getDocs(legacyQ);
+  return legacySnap.docs.map((d) => {
+    const data = d.data() as any;
+    return {
+      id: d.id,
+      num: Number(data.num ?? Number(d.id) ?? 0),
+      title: data.title ?? "",
+      updatedAt: data.updatedAt ?? 0,
+    };
+  });
+}
+
+/** Legacy: full chapters (downloads content). Prefer `getChapterMetas` + `getChapter`. */
 export async function getChapters(storyId: string): Promise<Chapter[]> {
   const qy = query(chaptersCol(storyId), orderBy("num", "asc"));
   const snap = await getDocs(qy);
-
   return snap.docs.map((d) => {
     const data = d.data() as any;
     return {
@@ -102,16 +154,23 @@ export async function getChapter(
   storyId: string,
   chapterId: string
 ): Promise<Chapter | null> {
-  const snap = await getDoc(chapterRef(storyId, chapterId));
-  if (!snap.exists()) return null;
-  const data = snap.data() as any;
+  // Prefer split storage (content in chapters, title in chaptersMeta)
+  const [contentSnap, metaSnap] = await Promise.all([
+    getDoc(chapterRef(storyId, chapterId)),
+    getDoc(chapterMetaRef(storyId, chapterId)),
+  ]);
 
-  return {
-    id: snap.id,
-    title: data.title ?? "",
-    content: data.content ?? "",
-    updatedAt: data.updatedAt ?? 0,
-  };
+  // Legacy single-doc schema
+  if (!contentSnap.exists() && !metaSnap.exists()) return null;
+
+  const contentData = (contentSnap.exists() ? contentSnap.data() : {}) as any;
+  const metaData = (metaSnap.exists() ? metaSnap.data() : {}) as any;
+
+  const title = metaData.title ?? contentData.title ?? "";
+  const updatedAt = metaData.updatedAt ?? contentData.updatedAt ?? 0;
+  const content = contentData.content ?? "";
+
+  return { id: chapterId, title, content, updatedAt };
 }
 
 export async function upsertChapter(
@@ -121,40 +180,61 @@ export async function upsertChapter(
   const now = Date.now();
   const num = Number(chapter.id) || 0;
 
-  await setDoc(
-    chapterRef(storyId, chapter.id),
-    {
-      id: chapter.id,
-      num,
-      title: chapter.title,
-      content: chapter.content,
-      updatedAt: now,
-    },
-    { merge: true }
-  );
+  // Store meta + content separately to avoid downloading all contents for lists.
+  await Promise.all([
+    setDoc(
+      chapterMetaRef(storyId, chapter.id),
+      {
+        id: chapter.id,
+        num,
+        title: chapter.title,
+        updatedAt: now,
+      },
+      { merge: true }
+    ),
+    setDoc(
+      chapterRef(storyId, chapter.id),
+      {
+        id: chapter.id,
+        num,
+        // keep title for backward-compat/search convenience (optional)
+        title: chapter.title,
+        content: chapter.content,
+        updatedAt: now,
+      },
+      { merge: true }
+    ),
+  ]);
 
   // bump story.updatedAt
   await setDoc(storyRef(storyId), { updatedAt: now }, { merge: true });
 }
 
-/** ✅ realtime listen chapters */
-export function listenChapters(
+/** ✅ realtime listen chapter metas (no content) */
+export function listenChapterMetas(
   storyId: string,
-  cb: (chs: Chapter[]) => void
+  cb: (chs: ChapterMeta[]) => void
 ): () => void {
-  const qy = query(chaptersCol(storyId), orderBy("num", "asc"));
+  const qy = query(chaptersMetaCol(storyId), orderBy("num", "asc"));
 
-  const unsub = onSnapshot(qy, (snap) => {
-    const chs: Chapter[] = snap.docs.map((d) => {
-      const data = d.data() as any;
-      return {
-        id: d.id,
-        title: data.title ?? "",
-        content: data.content ?? "",
-        updatedAt: data.updatedAt ?? 0,
-      };
-    });
-    cb(chs);
+  const unsub = onSnapshot(qy, async (snap) => {
+    if (!snap.empty) {
+      const chs: ChapterMeta[] = snap.docs.map((d) => {
+        const data = d.data() as any;
+        return {
+          id: d.id,
+          num: Number(data.num ?? Number(d.id) ?? 0),
+          title: data.title ?? "",
+          updatedAt: data.updatedAt ?? 0,
+        };
+      });
+      cb(chs);
+      return;
+    }
+
+    // ⚠️ fallback for legacy schema
+    const legacy = await getChapterMetas(storyId);
+    cb(legacy);
   });
 
   return unsub;
@@ -166,28 +246,45 @@ export async function batchUpsertChapters(
   chapters: Array<{ id: string; title: string; content: string }>
 ) {
   const now = Date.now();
-  const batch = writeBatch(db);
 
-  for (const ch of chapters) {
-    const num = Number(ch.id) || 0;
+  // Firestore batch limit ~500 ops → chunk to be safe.
+  // Each chapter writes 2 docs (meta + content). We'll keep a comfortable margin.
+  const OPS_PER_CHAPTER = 2;
+  const MAX_OPS = 450;
+  const CHUNK_SIZE = Math.max(1, Math.floor(MAX_OPS / OPS_PER_CHAPTER));
 
-    batch.set(
-      chapterRef(storyId, ch.id),
-      {
-        id: ch.id,
-        num,
-        title: ch.title,
-        content: ch.content,
-        updatedAt: now,
-      },
-      { merge: true }
-    );
+  for (let i = 0; i < chapters.length; i += CHUNK_SIZE) {
+    const slice = chapters.slice(i, i + CHUNK_SIZE);
+    const batch = writeBatch(db);
+
+    for (const ch of slice) {
+      const num = Number(ch.id) || 0;
+
+      batch.set(
+        chapterMetaRef(storyId, ch.id),
+        { id: ch.id, num, title: ch.title, updatedAt: now },
+        { merge: true }
+      );
+      batch.set(
+        chapterRef(storyId, ch.id),
+        {
+          id: ch.id,
+          num,
+          title: ch.title,
+          content: ch.content,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+    }
+
+    // bump story.updatedAt in the last batch only (1 op)
+    if (i + CHUNK_SIZE >= chapters.length) {
+      batch.set(storyRef(storyId), { updatedAt: now }, { merge: true });
+    }
+
+    await batch.commit();
   }
-
-  // bump story.updatedAt 1 lần
-  batch.set(storyRef(storyId), { updatedAt: now }, { merge: true });
-
-  await batch.commit();
 }
 
 // =======================
@@ -195,17 +292,61 @@ export async function batchUpsertChapters(
 // =======================
 
 export async function deleteChapter(storyId: string, chapterId: string) {
-  await deleteDoc(chapterRef(storyId, chapterId));
+  await Promise.all([
+    deleteDoc(chapterRef(storyId, chapterId)),
+    deleteDoc(chapterMetaRef(storyId, chapterId)),
+  ]);
   await setDoc(storyRef(storyId), { updatedAt: Date.now() }, { merge: true });
 }
 
 export async function deleteAllChapters(storyId: string) {
-  const qy = query(chaptersCol(storyId), limit(500));
-  const snap = await getDocs(qy);
+  // Delete both content + meta collections, paged by 500.
+  async function deletePaged(col: ReturnType<typeof chaptersCol>) {
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const qy = query(col, limit(500));
+      const snap = await getDocs(qy);
+      if (snap.empty) break;
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => batch.delete(d.ref));
+      await batch.commit();
+    }
+  }
 
-  const batch = writeBatch(db);
-  snap.docs.forEach((d) => batch.delete(d.ref));
-  await batch.commit();
+  await deletePaged(chaptersCol(storyId));
+  await deletePaged(chaptersMetaCol(storyId));
 
   await setDoc(storyRef(storyId), { updatedAt: Date.now() }, { merge: true });
+}
+
+// =======================
+// Migration helper (optional)
+// =======================
+
+/**
+ * One-time migration helper:
+ * If you already have legacy chapters (title+content in one doc), this creates `chaptersMeta`.
+ * Call from Admin when you need it.
+ */
+export async function migrateCreateChapterMetasFromLegacy(storyId: string) {
+  const metas = await getChapterMetas(storyId);
+  if (metas.length > 0) return; // already migrated
+
+  const legacy = await getChapters(storyId); // ⚠️ downloads all content once
+  const now = Date.now();
+
+  const CHUNK_SIZE = 450;
+  for (let i = 0; i < legacy.length; i += CHUNK_SIZE) {
+    const batch = writeBatch(db);
+    const slice = legacy.slice(i, i + CHUNK_SIZE);
+    for (const ch of slice) {
+      const num = Number(ch.id) || 0;
+      batch.set(
+        chapterMetaRef(storyId, ch.id),
+        { id: ch.id, num, title: ch.title, updatedAt: ch.updatedAt ?? now },
+        { merge: true }
+      );
+    }
+    await batch.commit();
+  }
 }

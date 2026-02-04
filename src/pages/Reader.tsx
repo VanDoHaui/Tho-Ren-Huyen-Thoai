@@ -6,7 +6,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
 // ✅ Firestore DB
-import { getChapter, getStory, listenChapters, type Chapter } from "../data/db";
+import { getChapter, getStory, listenChapterMetas, type ChapterMeta } from "../data/db";
 
 // ✅ Sync progress/prefs by user
 import { loadPrefs, loadProgress, savePrefs, saveProgress } from "../data/userSync";
@@ -14,16 +14,7 @@ import { loadPrefs, loadProgress, savePrefs, saveProgress } from "../data/userSy
 // ✅ Firebase Auth UI
 import { useAuth } from "../AuthProvider";
 
-/* ===== Load Google Fonts ===== */
-if (typeof document !== "undefined") {
-  const fontLink = document.createElement("link");
-  fontLink.href =
-    "https://fonts.googleapis.com/css2?family=Noto+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700&family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&family=Lato:wght@400;700&family=Poppins:wght@400;500;600;700&display=swap";
-  fontLink.rel = "stylesheet";
-  if (!document.querySelector(`link[href*="fonts.googleapis.com"]`)) {
-    document.head.appendChild(fontLink);
-  }
-}
+// Google Fonts are loaded in index.html to avoid module side-effects.
 
 /* ===== Utils ===== */
 function normalizeContent(raw?: string) {
@@ -123,7 +114,7 @@ export default function Reader() {
 
   // ✅ Firestore states
   const [story, setStory] = useState<any>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapters, setChapters] = useState<ChapterMeta[]>([]);
   const [chapter, setChapter] = useState<any>(null);
   const [dbLoading, setDbLoading] = useState(true);
   const [chapterLoading, setChapterLoading] = useState(true);
@@ -170,7 +161,7 @@ export default function Reader() {
       setStory(s ?? null);
     })();
 
-    const unsub = listenChapters(storyId, (chs) => {
+    const unsub = listenChapterMetas(storyId, (chs) => {
       if (!mounted) return;
       setChapters(chs ?? []);
       setDbLoading(false);
@@ -243,9 +234,8 @@ export default function Reader() {
     localStorage.setItem(prefsKey, JSON.stringify(payload));
 
     if (user?.uid && storyId) {
-      // ✅ cast để không bị type ở userSync (light|dark) chặn build
       savePrefs(user.uid, storyId, {
-        theme: theme as any,
+        theme,
         font,
         fontSize: clamp(fontSize, 14, 26),
       }).catch(() => {});
@@ -275,7 +265,7 @@ export default function Reader() {
 
         if (bestPrefs === localPrefs && localPrefs) {
           await savePrefs(user.uid, storyId, {
-            theme: (localPrefs.theme as any),
+            theme: localPrefs.theme,
             font: localPrefs.font,
             fontSize: localPrefs.fontSize,
           });

@@ -6,43 +6,78 @@ import {
   deleteAllChapters,
   deleteChapter,
   getStory,
-  getChapters,
+  getChapterMetas,
 } from "../data/db";
 
 /** ===== Helpers: split chapters ===== */
 function splitChapters(text: string) {
-  const t = text.replace(/\r\n/g, "\n").trim();
-  const re = /(^|\n)\s*(chapter|chương)\s+(\d+)\s*[:.\-]?\s*(.*)\s*$/gim;
+  // Normalize line endings and trim noisy blank space.
+  const t = text.replace(/\r\n/g, "\n").replace(/\u00A0/g, " ").trim();
 
-  const matches: Array<{ index: number; chapNo: string; title: string }> = [];
-  let m: RegExpExecArray | null;
+  // More robust detector:
+  // - Anchor at line start
+  // - Accept: "Chương 12", "CHUONG 12", "Chapter 12"
+  // - Title can be on the same line OR the next line.
+  const headingRe = /^\s*(chapter|chuong|chương)\s+(\d{1,5})\s*(?:[:.\-–—])?\s*(.*)\s*$/i;
+
+  const lines = t.split("\n");
+  const headings: Array<{ lineIndex: number; chapNo: string; title: string }> = [];
 
   const cleanTitle = (s: string) =>
     (s || "")
       .trim()
-      .replace(/^[\.\-:]+$/g, "")
-      .replace(/[\s]*[\.\-:]+$/g, "")
+      .replace(/^[\s:._\-–—]+/g, "")
+      .replace(/[\s:._\-–—]+$/g, "")
       .trim();
 
-  while ((m = re.exec(t)) !== null) {
-    matches.push({ index: m.index, chapNo: m[3], title: cleanTitle(m[4] || "") });
+  for (let i = 0; i < lines.length; i++) {
+    const ln = lines[i];
+    const m = ln.match(headingRe);
+    if (!m) continue;
+
+    const chapNo = String(Number(m[2])); // remove leading zeros, keep numeric
+    let title = cleanTitle(m[3] || "");
+
+    // If title is empty, try to use the next non-empty line as title.
+    if (!title) {
+      const next = lines[i + 1] ?? "";
+      const nextTrim = cleanTitle(next);
+      // Avoid swallowing the next heading line as title.
+      if (nextTrim && !headingRe.test(nextTrim)) {
+        title = nextTrim;
+      }
+    }
+
+    headings.push({ lineIndex: i, chapNo, title });
   }
 
-  if (matches.length === 0) {
+  if (headings.length === 0) {
     return [{ id: "1", title: "Chapter 1", content: t }];
   }
 
+  // Build chapter blocks by slicing line ranges.
   const out: Array<{ id: string; title: string; content: string }> = [];
-  for (let i = 0; i < matches.length; i++) {
-    const start = matches[i].index;
-    const end = i + 1 < matches.length ? matches[i + 1].index : t.length;
-    const chunk = t.slice(start, end).trim();
-    const id = matches[i].chapNo;
+  for (let i = 0; i < headings.length; i++) {
+    const startLine = headings[i].lineIndex;
+    const endLine = i + 1 < headings.length ? headings[i + 1].lineIndex : lines.length;
 
-    const title = matches[i].title ? `Chapter ${id}: ${matches[i].title}` : `Chapter ${id}`;
-    const content = chunk.replace(/^.*(chapter|chương)\s+\d+.*$/im, "").trim();
-    out.push({ id, title, content: content || chunk });
+    const chunkLines = lines.slice(startLine, endLine);
+    const id = headings[i].chapNo;
+
+    // Remove heading line itself from content.
+    chunkLines.shift();
+    // If we used next line as title, also remove it from content when it is exactly that title.
+    if (headings[i].title && chunkLines.length) {
+      const first = cleanTitle(chunkLines[0]);
+      if (first && first === headings[i].title) chunkLines.shift();
+    }
+
+    const title = headings[i].title ? `Chapter ${id}: ${headings[i].title}` : `Chapter ${id}`;
+    const content = chunkLines.join("\n").trim();
+
+    out.push({ id, title, content });
   }
+
   return out;
 }
 
@@ -146,7 +181,7 @@ export default function Admin() {
     const story = await getStory(storyId);
     setStoryTitle(story?.title ?? "Admin");
 
-    const chs = await getChapters(storyId);
+    const chs = await getChapterMetas(storyId);
     setChapters(chs.map((c) => ({ id: c.id, title: c.title })));
   }
 
@@ -177,6 +212,19 @@ export default function Admin() {
         if (!rawText) continue;
 
         const chs = splitChapters(rawText);
+
+        // Detect duplicate chapter numbers (often happens if the doc has a table-of-contents or repeated headers).
+        const seen = new Map<string, number>();
+        for (const c of chs) seen.set(c.id, (seen.get(c.id) ?? 0) + 1);
+        const dups = Array.from(seen.entries())
+          .filter(([, n]) => n > 1)
+          .map(([id, n]) => `${id}×${n}`);
+        if (dups.length) {
+          setMsg(
+            `⚠️ File "${file.name}" có chapter bị trùng số: ${dups.join(", ")}. ` +
+              `Firestore sẽ ghi đè (chapter trùng id chỉ còn 1). Bạn nên xoá mục lục/headers trong doc hoặc mình sẽ đổi sang auto re-number.`
+          );
+        }
 
         // ✅ batch write 1 lần / file
         await batchUpsertChapters(storyId, chs);

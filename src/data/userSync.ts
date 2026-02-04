@@ -45,7 +45,7 @@ export async function loadPrefs(uid: string, storyId: string) {
 export async function savePrefs(
   uid: string,
   storyId: string,
-  prefs: { theme: "light" | "dark"; font: string; fontSize: number }
+  prefs: { theme: ReaderTheme; font: string; fontSize: number }
 ) {
   await setDoc(prefsRef(uid, storyId), { ...prefs, updatedAt: Date.now() }, { merge: true });
 }

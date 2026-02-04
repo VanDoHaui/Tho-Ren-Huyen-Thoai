@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 
 // ✅ Firestore DB
-import { getStory, listenChapters } from "../data/db";
-import type { Chapter, Story } from "../data/db";
+import { getStory, listenChapterMetas } from "../data/db";
+import type { ChapterMeta, Story } from "../data/db";
 
 // ✅ Auth
 import { useAuth } from "../AuthProvider";
@@ -28,7 +28,7 @@ export default function Home() {
   const storyId = "1";
 
   const [story, setStory] = useState<Story | null>(null);
-  const [chapters, setChapters] = useState<Chapter[]>([]);
+  const [chapters, setChapters] = useState<ChapterMeta[]>([]);
   const [dbLoading, setDbLoading] = useState(true);
 
   useEffect(() => {
@@ -44,7 +44,7 @@ export default function Home() {
       }
     })();
 
-    const unsub = listenChapters(storyId, (chs) => {
+    const unsub = listenChapterMetas(storyId, (chs) => {
       if (!mounted) return;
       setChapters(chs ?? []);
     });
@@ -56,7 +56,7 @@ export default function Home() {
   }, [storyId]);
 
   const sortedChapters = useMemo(() => {
-    return [...chapters].sort((a, b) => Number(a.id) - Number(b.id));
+    return [...chapters].sort((a, b) => Number(a.num) - Number(b.num));
   }, [chapters]);
 
   // ---------- Search + Pagination ----------
