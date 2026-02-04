@@ -99,28 +99,62 @@ export async function getStory(storyId: StoryId): Promise<Story | null> {
   const ref = storyRef(storyId);
   console.log("ref.path:", ref.path);
   
-  const snap = await getDoc(ref);
-  console.log("snap.exists():", snap.exists());
-  console.log("snap.id:", snap.id);
-  console.log("snap.data():", snap.data());
-  
-  if (!snap.exists()) {
-    console.log("❌ Document does not exist!");
-    return null;
-  }
-  
-  const data = snap.data() as any;
+  try {
+    console.log("⏳ Calling getDoc with 10s timeout...");
+    
+    const snap = await Promise.race([
+      getDoc(ref),
+      new Promise((_, reject) => 
+        setTimeout(() => reject(new Error("❌ Timeout: getDoc took longer than 10 seconds")), 10000)
+      )
+    ]) as any;
+    
+    console.log("✅ getDoc returned!");
+    console.log("snap.exists():", snap.exists());
+    console.log("snap.id:", snap.id);
+    console.log("snap.data():", snap.data());
+    
+    if (!snap.exists()) {
+      console.log("❌ Document does not exist!");
+      return null;
+    }
+    
+    const data = snap.data() as any;
 
-  const result = {
-    id: snap.id,
-    title: data.title ?? "",
-    author: data.author ?? "",
-    description: data.description ?? "",
-    updatedAt: data.updatedAt ?? 0,
-  };
-  
-  console.log("✅ Returning story:", result);
-  return result;
+    const result = {
+      id: snap.id,
+      title: data.title ?? "",
+      author: data.author ?? "",
+      description: data.description ?? "",
+      updatedAt: data.updatedAt ?? 0,
+    };
+    
+    console.log("✅ Returning story:", result);
+    return result;
+  } catch (error) {
+    console.error("❌ Error in getStory:", error);
+    
+    // Thử lại 1 lần nữa
+    console.log("🔄 Retrying once...");
+    try {
+      const snap = await getDoc(ref);
+      console.log("✅ Retry successful! snap.exists():", snap.exists());
+      
+      if (!snap.exists()) return null;
+      
+      const data = snap.data() as any;
+      return {
+        id: snap.id,
+        title: data.title ?? "",
+        author: data.author ?? "",
+        description: data.description ?? "",
+        updatedAt: data.updatedAt ?? 0,
+      };
+    } catch (retryError) {
+      console.error("❌ Retry also failed:", retryError);
+      throw retryError;
+    }
+  }
 }
 
 export async function upsertStory(story: Story) {
