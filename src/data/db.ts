@@ -11,6 +11,8 @@ import {
   query,
   setDoc,
   writeBatch,
+  CollectionReference,
+  DocumentReference,
 } from "firebase/firestore";
 
 // =======================
@@ -41,34 +43,54 @@ export type Story = {
 };
 
 // =======================
+// Helpers
+// =======================
+
+type StoryId = string | number;
+
+function sid(storyId: StoryId): string {
+  return String(storyId);
+}
+
+// =======================
 // Paths
 // =======================
 
-function storyRef(storyId: string) {
-  return doc(db, "stories", storyId);
+function storyRef(storyId: StoryId): DocumentReference {
+  return doc(db, "stories", sid(storyId));
 }
 
-function chaptersCol(storyId: string) {
-  return collection(db, "stories", storyId, "chapters");
+function chaptersCol(storyId: StoryId): CollectionReference {
+  return collection(db, "stories", sid(storyId), "chapters");
 }
 
-function chaptersMetaCol(storyId: string) {
-  return collection(db, "stories", storyId, "chaptersMeta");
+function chaptersMetaCol(storyId: StoryId): CollectionReference {
+  return collection(db, "stories", sid(storyId), "chaptersMeta");
 }
 
-function chapterRef(storyId: string, chapterId: string) {
-  return doc(db, "stories", storyId, "chapters", chapterId);
+function chapterRef(storyId: StoryId, chapterId: string): DocumentReference {
+  return doc(db, "stories", sid(storyId), "chapters", chapterId);
 }
 
-function chapterMetaRef(storyId: string, chapterId: string) {
-  return doc(db, "stories", storyId, "chaptersMeta", chapterId);
+function chapterMetaRef(storyId: StoryId, chapterId: string): DocumentReference {
+  return doc(db, "stories", sid(storyId), "chaptersMeta", chapterId);
+}
+
+// =======================
+// Env assert (optional)
+// =======================
+
+function assertString(name: string, value: unknown) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`[db] Invalid value for ${name}`);
+  }
 }
 
 // =======================
 // Story
 // =======================
 
-export async function getStory(storyId: string): Promise<Story | null> {
+export async function getStory(storyId: StoryId): Promise<Story | null> {
   const snap = await getDoc(storyRef(storyId));
   if (!snap.exists()) return null;
   const data = snap.data() as any;
@@ -83,6 +105,8 @@ export async function getStory(storyId: string): Promise<Story | null> {
 }
 
 export async function upsertStory(story: Story) {
+  assertString("story.id", story.id);
+
   await setDoc(
     storyRef(story.id),
     {
@@ -105,7 +129,7 @@ export async function upsertStory(story: Story) {
  * Uses: stories/{storyId}/chaptersMeta/{chapterId}
  * Backward-compat: if meta is empty, falls back to old `chapters` (will be heavy until migrated).
  */
-export async function getChapterMetas(storyId: string): Promise<ChapterMeta[]> {
+export async function getChapterMetas(storyId: StoryId): Promise<ChapterMeta[]> {
   const metaQ = query(chaptersMetaCol(storyId), orderBy("num", "asc"));
   const metaSnap = await getDocs(metaQ);
 
@@ -136,7 +160,7 @@ export async function getChapterMetas(storyId: string): Promise<ChapterMeta[]> {
 }
 
 /** Legacy: full chapters (downloads content). Prefer `getChapterMetas` + `getChapter`. */
-export async function getChapters(storyId: string): Promise<Chapter[]> {
+export async function getChapters(storyId: StoryId): Promise<Chapter[]> {
   const qy = query(chaptersCol(storyId), orderBy("num", "asc"));
   const snap = await getDocs(qy);
   return snap.docs.map((d) => {
@@ -151,7 +175,7 @@ export async function getChapters(storyId: string): Promise<Chapter[]> {
 }
 
 export async function getChapter(
-  storyId: string,
+  storyId: StoryId,
   chapterId: string
 ): Promise<Chapter | null> {
   // Prefer split storage (content in chapters, title in chaptersMeta)
@@ -160,7 +184,7 @@ export async function getChapter(
     getDoc(chapterMetaRef(storyId, chapterId)),
   ]);
 
-  // Legacy single-doc schema
+  // Legacy single-doc schema (or missing)
   if (!contentSnap.exists() && !metaSnap.exists()) return null;
 
   const contentData = (contentSnap.exists() ? contentSnap.data() : {}) as any;
@@ -174,7 +198,7 @@ export async function getChapter(
 }
 
 export async function upsertChapter(
-  storyId: string,
+  storyId: StoryId,
   chapter: { id: string; title: string; content: string }
 ) {
   const now = Date.now();
@@ -212,7 +236,7 @@ export async function upsertChapter(
 
 /** ✅ realtime listen chapter metas (no content) */
 export function listenChapterMetas(
-  storyId: string,
+  storyId: StoryId,
   cb: (chs: ChapterMeta[]) => void
 ): () => void {
   const qy = query(chaptersMetaCol(storyId), orderBy("num", "asc"));
@@ -242,7 +266,7 @@ export function listenChapterMetas(
 
 /** ✅ batch import (Admin dùng cái này) */
 export async function batchUpsertChapters(
-  storyId: string,
+  storyId: StoryId,
   chapters: Array<{ id: string; title: string; content: string }>
 ) {
   const now = Date.now();
@@ -267,13 +291,7 @@ export async function batchUpsertChapters(
       );
       batch.set(
         chapterRef(storyId, ch.id),
-        {
-          id: ch.id,
-          num,
-          title: ch.title,
-          content: ch.content,
-          updatedAt: now,
-        },
+        { id: ch.id, num, title: ch.title, content: ch.content, updatedAt: now },
         { merge: true }
       );
     }
@@ -291,7 +309,7 @@ export async function batchUpsertChapters(
 // Delete
 // =======================
 
-export async function deleteChapter(storyId: string, chapterId: string) {
+export async function deleteChapter(storyId: StoryId, chapterId: string) {
   await Promise.all([
     deleteDoc(chapterRef(storyId, chapterId)),
     deleteDoc(chapterMetaRef(storyId, chapterId)),
@@ -299,9 +317,9 @@ export async function deleteChapter(storyId: string, chapterId: string) {
   await setDoc(storyRef(storyId), { updatedAt: Date.now() }, { merge: true });
 }
 
-export async function deleteAllChapters(storyId: string) {
+export async function deleteAllChapters(storyId: StoryId) {
   // Delete both content + meta collections, paged by 500.
-  async function deletePaged(col: ReturnType<typeof chaptersCol>) {
+  async function deletePaged(col: CollectionReference) {
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const qy = query(col, limit(500));
@@ -328,7 +346,7 @@ export async function deleteAllChapters(storyId: string) {
  * If you already have legacy chapters (title+content in one doc), this creates `chaptersMeta`.
  * Call from Admin when you need it.
  */
-export async function migrateCreateChapterMetasFromLegacy(storyId: string) {
+export async function migrateCreateChapterMetasFromLegacy(storyId: StoryId) {
   const metas = await getChapterMetas(storyId);
   if (metas.length > 0) return; // already migrated
 
