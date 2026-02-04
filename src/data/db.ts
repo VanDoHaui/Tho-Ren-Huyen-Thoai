@@ -91,17 +91,36 @@ function assertString(name: string, value: unknown) {
 // =======================
 
 export async function getStory(storyId: StoryId): Promise<Story | null> {
-  const snap = await getDoc(storyRef(storyId));
-  if (!snap.exists()) return null;
+  console.log("=== DEBUG getStory ===");
+  console.log("storyId:", storyId);
+  console.log("sid(storyId):", sid(storyId));
+  console.log("db:", db);
+  
+  const ref = storyRef(storyId);
+  console.log("ref.path:", ref.path);
+  
+  const snap = await getDoc(ref);
+  console.log("snap.exists():", snap.exists());
+  console.log("snap.id:", snap.id);
+  console.log("snap.data():", snap.data());
+  
+  if (!snap.exists()) {
+    console.log("❌ Document does not exist!");
+    return null;
+  }
+  
   const data = snap.data() as any;
 
-  return {
+  const result = {
     id: snap.id,
     title: data.title ?? "",
     author: data.author ?? "",
     description: data.description ?? "",
     updatedAt: data.updatedAt ?? 0,
   };
+  
+  console.log("✅ Returning story:", result);
+  return result;
 }
 
 export async function upsertStory(story: Story) {
